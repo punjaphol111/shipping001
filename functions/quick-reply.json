@@ -1,0 +1,26 @@
+{
+    "line": {	
+        "type": "text",
+        "text": "คำสั่ง $parcel $total $unit  ใช่หรือไม่",
+        "quickReply": {
+            "items": [
+                {
+                    "type": "action",
+                    "action": {
+                        "type": "message",
+                        "label": "ใช่",
+                        "text": "ใช่"
+                    }
+                },
+                {
+                    "type": "action",
+                    "action": {
+                        "type": "message",
+                        "label": "ไม่ใช่",
+                        "text": "ไม่ใช่"
+                    }
+                }
+            ]
+        }
+    }
+}

@@ -1,0 +1,8 @@
+{"lineMessagingApi":"https://api.line.me/v2/bot/message",
+"lineHeaders":{
+    "Content-Type":"application/json",
+    "Authorization":"Bearer qh1iUjdXCfmMGxo4JFxYzgK89CCXSu/Xyyr1LWkRovvrSo5xn4wC/1MF4uvdEwJ/61Qu7P+l58F/8PjfsimW12Y56/UjtVuRaLLBkDrUlpFP0F7kx3aqpOIoIK4m2kJvoSXHahGWzB+BZdHH8J7K0QdB04t89/1O/w1cDnyilFU="
+},
+  "databaseURL" : "https://shipping001-1d645.firebaseio.com",
+  "notifyToken" : "PmOfbyeRU3vFknvbymSlUNVtd6pHWV0Quppqj77036X"
+}
