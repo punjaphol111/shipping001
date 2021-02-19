@@ -133,7 +133,8 @@ exports.webhook = functions
       });
     };   
 
-    const viewMenuSelect = async agent => {
+    // when user select "ส่งของ"
+    const viewMenuSelect = async () => {
       //[13] ดึงข้อมูล source และ userId ขึ้นมาไว้
       let source = req.body.originalDetectIntentRequest.source;
       if (typeof source === "undefined") {
@@ -143,158 +144,280 @@ exports.webhook = functions
       //ดึงข้อมูล userId
       let userId = "";
       if (source === "line") {
-        userId =
-          req.body.originalDetectIntentRequest.payload.data.source.userId;
+        userId = req.body.originalDetectIntentRequest.payload.data.source.userId;
       }
 
       //ดึงข้อมูลจาก parameters ขึ้นมาแสดง
       const unit = req.body.queryResult.parameters.unit;
       const total = req.body.queryResult.parameters.total;
       const parcel = req.body.queryResult.parameters.parcel;
+      const currentDate = Date.now();
      
-      //[14] ดึง orderNo จาก database ขึ้นมาแสดง
+      // check user in collection Users
+      // -1 is not check, 0 is new user, 1 is old user
+      let checkUser = await db.collection("Users").get().then(snapshot => {
+          var have_user = -1
+          snapshot.forEach((doc) => {
+            if(doc.id == userId){
+              have_user = 1
+            }else{
+              have_user = 0
+            }
+          });
+         return have_user;
+      })
+      
+      // new user
+      if(checkUser == 0){
+        await db.collection("Users").doc(userId).set({
+          timestamp: currentDate,
+          unit : unit,
+          total : total,
+          parcel: parcel,
+          status: "unsuccess",
+          address: "",
+          date: "",
+          time:"",
+          latitude: "",
+          longitude: "" 
+        })
+      }else if(checkUser == 1){
+        // old user
+        await db.collection("Users").doc(userId).update({
+          timestamp: currentDate,
+          unit : unit,
+          total : total,
+          parcel: parcel,
+          status: "unsuccess",
+          address: "",
+          date: "",
+          time:"",
+          latitude: "",
+          longitude: "" 
+        })
+      }
+    }
+    
+    // when user select "ยกเลิก"
+    const cancelOrder = async (agent) => {
+      // get userId
+      const userId = req.body.originalDetectIntentRequest.payload.data.source.userId;
+      await db.collection("Users").doc(userId).update({
+          timestamp: "",
+          unit : "",
+          total : "",
+          parcel: "",
+          status: "unsuccess",
+          address: "",
+          date: "",
+          time:"",
+          latitude: "",
+          longitude: "" 
+      })
+
+      let cancelMsg = {
+        "type": "flex",
+        "altText": "Flex Message",
+        "contents": {
+          "type": "bubble",
+          "direction": "ltr",
+          "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+              {
+                "type": "text",
+                "text": "คุณได้ยกเลิกการสั่ง",
+                "align": "center",
+                "weight": "bold"
+              },
+            ]
+          },
+        }
+      }
+
+      const payloadMsg = new Payload("LINE", cancelMsg, {
+        sendAsMessage: true
+      });
+      return agent.add(payloadMsg);
+    }
+
+    // when user select "ยืนยัน"
+    const comfirmOrder = async (agent) => {
+      // get user
+      const userId = req.body.originalDetectIntentRequest.payload.data.source.userId;
+      // check status data
+      let checkSuccess = await db.collection("Users").doc(userId).get().then(doc =>{
+        return doc.data()
+      })
+
+      // get Order size
       let orderNo = await db
         .collection("Order")
         .get()
         .then(snapshot => {
+          console.log("order size: ",snapshot.size)
           return snapshot.size;
         });
 
       orderNo++;
       const orderNoStr = orderNo.toString().padStart(4, "0");
-      const currentDate = Date.now();
-      console.log(orderNoStr)
-      
-      // check user id in Users collection
-      var status = -1
-      const orderDB = null
-      db.collection("Users").get().then((querySnapshot) => {
-        querySnapshot.forEach((doc) => {
-            // doc.data() is never undefined for query doc snapshots
-            console.log(doc.id, " => ", doc.data());
-            if(doc.id == userId){
-              status = 1
-              orderDB = doc.data()
-            }else{
-              console.log("nooooooooooooooooooooo")
-              status = 0
-            }
+       // -1 is not check, 0 is new user, 1 is old user
+      let checkUser_inHis = await db.collection("History").get().then(snapshot => {
+        var have_user = -1
+        snapshot.forEach((doc) => {
+          if(doc.id == userId){
+            have_user = 1
+          }else{
+            have_user = 0
+          }
         });
-      });
-      
-      console.log(status)
-      // add user id in User collection
-      // if(status == 0){
-      //   db.collection("Users").doc(userId).set({
-      //     orderNo: [orderNoStr]
-      //   })
-      // }else if(status == 1){
-      //     console.log(orderDB)
-      // }
+       return have_user;
+      })
 
-
-
-
-      db.collection("Users").get()
-      //[15] บันทึกข้อมูลลง database
-      return db
-      .collection("Order")
-      .doc(orderNoStr)
-      .set({
-        timestamp: currentDate,
-        unit : unit,
-        total : total,
-        parcel: parcel,
-        userId: userId,
-        source: source,
-        orderNo: orderNo,
-        status: 0,
-        })
-      .then(snapshot => {
-        //[16] เพิ่ม flex เพื่อความสวยงาม
-        let flexOrderMsg = {
-          "type": "flex",
-          "altText": "Flex Message",
-          "contents": {
-            "type": "bubble",
-            "direction": "ltr",
-            "body": {
-              "type": "box",
-              "layout": "vertical",
-              "contents": [
-                {
-                  "type": "text",
-                  "text": "Order Number",
-                  "align": "center",
-                  "weight": "bold"
-                },
-                {
-                  "type": "text",
-                  "text": `${orderNoStr}`,
-                  "size": "3xl",
-                  "align": "center",
-                  "weight": "bold"
-                },
-                {
-                  "type": "text",
-                  "text": "รายการ",
-                  "size": "lg",
-                  "weight": "bold"
-                },
-                {
-                  "type": "box",
-                  "layout": "horizontal",
-                  "contents": [
-                    {
-                      "type": "text",
-                      "text": `${parcel} ${total} ชิ้น`,
-                      "size": "md",
-                      "weight": "regular"
-                    },
-                    
-                  ]
-                }
-              ]
-            },
-            "footer": {
-              "type": "box",
-              "layout": "horizontal",
-              "contents": [
-                {
-                  "type": "text",
-                  "text":
-                  "Pick AT Home ขอขอบคุณที่ท่านไว้ใจใช้บริการกับเรา",
-                  "size": "md",
-                  "align": "center",
-                  "gravity": "center",
-                  "weight": "regular",
-                  "wrap": true
-                }
-              ]
-            }
+      let flexOrderMsg = {
+        "type": "flex",
+        "altText": "Flex Message",
+        "contents": {
+          "type": "bubble",
+          "direction": "ltr",
+          "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+              {
+                "type": "text",
+                "text": "Order Number",
+                "align": "center",
+                "weight": "bold"
+              },
+              {
+                "type": "text",
+                "text": `${orderNoStr}`,
+                "size": "3xl",
+                "align": "center",
+                "weight": "bold"
+              },
+              {
+                "type": "text",
+                "text": "รายการ",
+                "size": "lg",
+                "weight": "bold"
+              },
+              {
+                "type": "box",
+                "layout": "horizontal",
+                "contents": [
+                  {
+                    "type": "text",
+                    "text": `${checkSuccess.parcel} ${checkSuccess.total} ชิ้น`,
+                    "size": "md",
+                    "weight": "regular"
+                  },
+                  
+                ]
+              }
+            ]
+          },
+          "footer": {
+            "type": "box",
+            "layout": "horizontal",
+            "contents": [
+              {
+                "type": "text",
+                "text":
+                "Pick AT Home ขอขอบคุณที่ท่านไว้ใจใช้บริการกับเรา",
+                "size": "md",
+                "align": "center",
+                "gravity": "center",
+                "weight": "regular",
+                "wrap": true
+              }
+            ]
           }
         }
-        
-        const payloadMsg = new Payload("LINE", flexOrderMsg, {
-          sendAsMessage: true
-        });
+      }
+
+      let unsuccessMsg = {
+        "type": "flex",
+        "altText": "Flex Message",
+        "contents": {
+          "type": "bubble",
+          "direction": "ltr",
+          "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+              {
+                "type": "text",
+                "text": "ไม่สามารถยืนยันข้อมูลได้ กรุณาสั่งใหม่อีกครั้ง",
+                "align": "center",
+                "weight": "bold"
+              },
+            ]
+          },
+        }
+      }
+
+      if(checkSuccess.status == "success"){
+        await db.collection("Order").doc(orderNoStr)
+        .set({
+            unit : checkSuccess.unit,
+            total : checkSuccess.total,
+            parcel: checkSuccess.parcel,
+            userId: userId,
+            status: 0,
+            address: checkSuccess.address,
+            latitude: checkSuccess.latitude,
+            longitude: checkSuccess.longitude,
+            date: checkSuccess.date,
+            time: checkSuccess.time
+          })
+          if(checkUser_inHis == 0)
+            await db.collection("History").doc(userId).set({
+              orderId: [orderNoStr]
+            })
+          else if(checkUser_inHis == 1){
+            await db.collection("History").doc(userId).update({
+              orderId: firebase.firestore.FieldValue.arrayUnion(orderNoStr)
+            })
+          }
+
+          // clear data in Users collection 
+          await db.collection("Users").doc(userId).update({
+              timestamp: "",
+              unit : "",
+              total : "",
+              parcel: "",
+              status: "unsuccess",
+              address: "",
+              date: "",
+              time:"",
+              latitude: "",
+              longitude: "" 
+          })
+          const payloadMsg = new Payload("LINE", flexOrderMsg, {
+            sendAsMessage: true
+          });
         // ส่ง notify หาผู้ใช้งาน
-        const notifyMsg = `มี Order No:${orderNoStr}\n ${parcel} ${total} ${unit}` 
+        const notifyMsg = `มี Order No:${orderNoStr}\n ${checkSuccess.parcel} ${checkSuccess.total} ${checkSuccess.unit}` 
         lineNotify(notifyMsg);
         return agent.add(payloadMsg);
-      })
-       .catch(error => {
-        return agent.add(JSON.stringify(error));
-      });
-    };
+      }else{
+        const payloadMsg = new Payload("LINE", unsuccessMsg, {
+          sendAsMessage: true
+        });
+        return agent.add(payloadMsg);
+      }
+    }
+
     //ข้อมูลที่อยากเก็บไว้ส่งของ
-    
     //[3] ทำ intent map เข้ากับ function
     let intentMap = new Map();
-    intentMap.set("view-menu", viewMenu);
-    
+    intentMap.set("view-menu", viewMenu);  
     intentMap.set("view-menu-select - yes", viewMenuSelect);
-
+    intentMap.set("confirm_order", comfirmOrder);
+    intentMap.set("cancel_order", cancelOrder);
     agent.handleRequest(intentMap);
   });
 
@@ -391,11 +514,11 @@ exports.LineAdapter = functions
     const event = req.body.events[0];
     let userId = "";
     userId = req.body.events[0].source.userId
-    console.log("req queryResult: ",req.body)
-    console.log("event: ", event);
     if (event.type === "message" && event.message.type === "text") {
+      // do this function when event is text
       postToDialogflow(req);
     } else {
+       // do this function when event isn't text
       reply(req,userId);
     }
   }
@@ -405,84 +528,121 @@ exports.LineAdapter = functions
 
 
 const updateTodb = (address,lat,lng,userId) =>{
-  // get user on firebase database
-  db.collection("Order").get().then((querySnapshot) => {
-    querySnapshot.forEach((doc) => {
-        // doc.data() is never undefined for query doc snapshots
-        console.log(doc.id, " => ", doc.data());
-
-    });
-});
-
-//   db.collection("Order")
-//   .doc()
-//   .set({
-//     address: address,
-//     latitude: lat,
-//     longitude: lng
-    
-//   })
-//   .then(console.log("update success!"))
+  // update address on firebase database
+  db.collection("Users").doc(userId).update({
+    address: address,
+    latitude: lat,
+    longitude: lng 
+  })
 }
 
-const reply = (req,userId) => { 
-  //ดึงข้อมูล userId
-  db.collection("Users").doc(userId).get().then(snapshot =>{
-    console.log(snapshot.data())
+const updateDate = (date,time,userId) =>{
+  // update date/time on firebase database
+  db.collection("Users").doc(userId).update({
+      date: date,
+      time: time,
+      status: "success"
   })
-  console.log("from reply",userId)
-  // if(req.body.events[0].message.type == "location"){
-  //   console.log(req.body.events[0].message.address)
-  //   const address = req.body.events[0].message.address
-  //   const lat = req.body.events[0].message.latitude
-  //   const lng = req.body.events[0].message.longitude
-  //   updateTodb(address,lat,lng,userId)
-  // }
-  return request.post({
-    uri: `${LINE_MESSAGING_API}/reply`,
-    headers: LINE_HEADER,
-    body: JSON.stringify({
-      replyToken: req.body.events[0].replyToken,
-      messages: [
-        {
-          type: "text",
-          text : "ระบุวันเข้ารับ",
-          "quickReply": {
-            "items": [
-              {
-                "type": "action",
-                "imageUrl": "https://icla.org/wp-content/uploads/2018/02/blue-calendar-icon.png",
-                "action": {
-                  "type": "datetimepicker",
-                  "label": "Datetime Picker",
-                  "data": "storeId=12345",
-                  "mode": "datetime",
-                  "initial": "2018-08-10t00:00",
-                  "max": "2021-12-31t23:59",
-                  "min": "2018-08-01t00:00"
-                }
+}
+
+const reply = async (req,userId) => { 
+  console.log("from reply ",req.body.events[0])
+  if(req.body.events[0].type == "message"){
+    // when event is location from line map
+    if(req.body.events[0].message.type == "location"){
+      console.log(req.body.events[0].message.address)
+      const address = req.body.events[0].message.address
+      const lat = req.body.events[0].message.latitude
+      const lng = req.body.events[0].message.longitude
+      // function to update data into database
+      updateTodb(address,lat,lng,userId)
+      // return date picker to line user
+      return request.post({
+        uri: `${LINE_MESSAGING_API}/reply`,
+        headers: LINE_HEADER,
+        body: JSON.stringify({
+          replyToken: req.body.events[0].replyToken,
+          messages: [
+            {
+              type: "text",
+              text : "ระบุวันเข้ารับ",
+              "quickReply": {
+                "items": [
+                  {
+                    "type": "action",
+                    "imageUrl": "https://icla.org/wp-content/uploads/2018/02/blue-calendar-icon.png",
+                    "action": {
+                      "type": "datetimepicker",
+                      "label": "Datetime Picker",
+                      "data": "storeId=12345",
+                      "mode": "datetime",
+                      "initial": "2018-08-10t00:00",
+                      "max": "2021-12-31t23:59",
+                      "min": "2018-08-01t00:00"
+                    }
+                  }
+                ]
               }
-            ]
-          }
-          // text: JSON.stringify(req.body),
-        },
-      ],
-    }),
-  });
+            },
+          ],
+        }),
+      });
+    }
+  } // when event is date/time from datetime picker
+  else if(req.body.events[0].type == "postback"){
+      var dateTime = req.body.events[0].postback.params.datetime.split("T");
+      const date = dateTime[0]
+      const time = dateTime[1]
+      // function to update data into database
+      updateDate(date,time,userId)
+      // get data from Users collection
+      let data = await db.collection("Users").doc(userId).get().then(doc =>{
+        return doc.data()
+      })
+      return request.post({
+        uri: `${LINE_MESSAGING_API}/reply`,
+        headers: LINE_HEADER,
+        body: JSON.stringify({
+          replyToken: req.body.events[0].replyToken,
+          messages: [
+            {
+                type: "text",
+                text: `จัดส่งพัสดุทั้งหมด ${data.total} ชิ้น \nที่อยู่ปลายทาง: ${data.address} \nเข้ารับวันที่ ${date} เวลา ${time}\nยืนยันใช่หรือไม่?`,
+                quickReply: {
+                  items: [
+                    {
+                      type: "action",
+                      action: {
+                        text: "ยืนยัน",
+                        label: "ยืนยัน",
+                        type: "message"
+                      }
+                    },
+                    {
+                      action: {
+                        label: "ยกเลิก",
+                        type: "message",
+                        text: "ยกเลิก"
+                      },
+                    }
+                  ]
+                }
+            }
+          ]
+        })
+      })
+  } 
 };
 
-
+// function for post to dialogflow 
 const postToDialogflow = (req) => {
   req.headers.host = "dialogflow.cloud.google.com";
-  console.log("textjaaa");
   return request.post({
     uri: dialogflowWebHook,
     headers: req.headers,
     body: JSON.stringify(req.body),
   });
 };
-
-
 
 //function สำหรับ reply กลับไปหา LINE โดยต้องการ reply token และ messages (array)
 const lineReply = (replyToken, messages) => {
